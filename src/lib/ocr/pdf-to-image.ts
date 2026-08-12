@@ -1,5 +1,5 @@
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
-import { createCanvas, Canvas, CanvasRenderingContext2D } from 'canvas'
+import { createCanvas, Canvas, SKRSContext2D as CanvasRenderingContext2D } from '@napi-rs/canvas'
 
 // Disable workers for Node.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = ''
