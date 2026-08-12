@@ -6,7 +6,7 @@ async function check() {
     include: { vouchers: true }
   })
   console.log(`Approved Invoices: ${invoices.length}`)
-  invoices.forEach(i => console.log(`Invoice ${i.id}: ${i.vouchers.length} vouchers`))
+  invoices.forEach((i: any) => console.log(`Invoice ${i.id}: ${i.vouchers.length} vouchers`))
 }
 
 check().catch(console.error).finally(() => process.exit(0))
