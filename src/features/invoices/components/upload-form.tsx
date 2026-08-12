@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { UploadCloud, CheckCircle2, AlertCircle, ArrowRight, FileText, Sparkles } from 'lucide-react'
 import { uploadInvoiceAction } from '@/app/actions/invoice-actions'
 import Link from 'next/link'

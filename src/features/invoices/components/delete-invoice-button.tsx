@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useTransition } from 'react'
 import { Trash2 } from 'lucide-react'
 import { deleteInvoiceAction } from '@/app/actions/invoice-actions'
 import { useRouter } from 'next/navigation'

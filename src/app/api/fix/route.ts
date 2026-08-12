@@ -17,7 +17,7 @@ export async function GET() {
       return NextResponse.json({ error: 'No vouchers found in DB.' });
     }
 
-    let output = [];
+    const output = [];
     output.push(`Latest Voucher ID: ${latestVoucher.id}`);
     output.push(`Current Voucher Date in DB: ${latestVoucher.voucherDate}`);
     

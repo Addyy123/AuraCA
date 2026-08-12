@@ -2,6 +2,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { prisma } from '@/lib/db'
+import { revalidatePath } from 'next/cache'
 
 export async function uploadInvoiceAction(formData: FormData) {
   try {
@@ -89,7 +90,6 @@ export async function uploadInvoiceAction(formData: FormData) {
 
 export async function deleteInvoiceAction(invoiceId: string) {
   try {
-    const { revalidatePath } = require('next/cache');
     
     const invoice = await prisma.invoice.findUnique({
       where: { id: invoiceId }
