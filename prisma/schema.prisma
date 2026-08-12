@@ -1,0 +1,311 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────
+// Enums
+// ─────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+enum DocumentType {
+  PDF_TEXT
+  PDF_SCANNED
+  IMAGE_JPG
+  IMAGE_PNG
+}
+
+enum InvoiceStatus {
+  UPLOADED
+  PROCESSING
+  EXTRACTED
+  NEEDS_REVIEW
+  APPROVED
+  REJECTED
+  EXPORTED
+  FAILED
+}
+
+enum VoucherType {
+  PURCHASE
+  SALES
+  JOURNAL
+  RECEIPT
+  PAYMENT
+}
+
+enum VoucherStatus {
+  DRAFT
+  REVIEWED
+  APPROVED
+  EXPORTED
+  FAILED
+}
+
+enum ValidationStatus {
+  PASS
+  FAIL
+  WARNING
+}
+
+enum ValidationSeverity {
+  ERROR
+  WARNING
+  INFO
+}
+
+enum EntryType {
+  DEBIT
+  CREDIT
+}
+
+enum ExportStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+// ─────────────────────────────────────
+// Models
+// ─────────────────────────────────────
+
+model Firm {
+  id        String   @id @default(uuid())
+  name      String
+  gstin     String   @unique
+  address   String?
+  phone     String?
+  email     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users    User[]
+  clients  Client[]
+  invoices Invoice[]
+
+  @@map("firms")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String?   @map("password_hash")
+  role         UserRole  @default(OPERATOR)
+  firmId       String    @map("firm_id")
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  firm              Firm              @relation(fields: [firmId], references: [id], onDelete: Restrict)
+  uploadedInvoices  Invoice[]         @relation("UploadedBy")
+  approvedLedgers   LedgerSuggestion[] @relation("ApprovedBy")
+  createdVouchers   Voucher[]         @relation("CreatedBy")
+  approvedVouchers  Voucher[]         @relation("ApprovedVoucherBy")
+  xmlExports        XmlExport[]
+  auditLogs         AuditLog[]
+
+  @@map("users")
+}
+
+model Client {
+  id            String   @id @default(uuid())
+  firmId        String   @map("firm_id")
+  name          String
+  companyName   String?  @map("company_name")
+  gstin         String?
+  contactPerson String?  @map("contact_person")
+  phone         String?
+  email         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  firm     Firm      @relation(fields: [firmId], references: [id], onDelete: Restrict)
+  invoices Invoice[]
+
+  @@map("clients")
+}
+
+model Invoice {
+  id                 String        @id @default(uuid())
+  firmId             String        @map("firm_id")
+  clientId           String?       @map("client_id")
+  uploadedById       String        @map("uploaded_by")
+  invoiceNumber      String?       @map("invoice_number")
+  vendorName         String?       @map("vendor_name")
+  vendorGstin        String?       @map("vendor_gstin")
+  invoiceDate        DateTime?     @map("invoice_date") @db.Date
+  documentType       DocumentType? @map("document_type")
+  sourceFileUrl      String        @map("source_file_url")
+  ocrText            String?       @map("ocr_text") @db.Text
+  aiRawResponse      Json?         @map("ai_raw_response")
+  subtotal           Decimal?      @db.Decimal(12, 2)
+  cgst               Decimal?      @db.Decimal(12, 2)
+  sgst               Decimal?      @db.Decimal(12, 2)
+  igst               Decimal?      @db.Decimal(12, 2)
+  total              Decimal?      @db.Decimal(12, 2)
+  currency           String        @default("INR")
+  status             InvoiceStatus @default(UPLOADED)
+  confidenceScore    Float?        @map("confidence_score")
+  reviewRequired     Boolean       @default(true) @map("review_required")
+  isDuplicateSuspect Boolean       @default(false) @map("is_duplicate_suspect")
+  processedAt        DateTime?     @map("processed_at")
+  approvedAt         DateTime?     @map("approved_at")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  firm               Firm               @relation(fields: [firmId], references: [id], onDelete: Restrict)
+  client             Client?            @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  uploadedBy         User               @relation("UploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  items              InvoiceItem[]
+  validationResults  ValidationResult[]
+  ledgerSuggestions  LedgerSuggestion[]
+  vouchers           Voucher[]
+  xmlExports         XmlExport[]
+
+  @@unique([firmId, vendorGstin, invoiceNumber], name: "unique_invoice_per_vendor")
+  @@index([firmId, status])
+  @@index([firmId, createdAt])
+  @@index([vendorGstin, invoiceNumber])
+  @@index([clientId, status])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String  @id @default(uuid())
+  invoiceId   String  @map("invoice_id")
+  description String
+  quantity    Decimal @db.Decimal(10, 3)
+  unitRate    Decimal @map("unit_rate") @db.Decimal(12, 2)
+  hsnCode     String? @map("hsn_code")
+  taxRate     Decimal @map("tax_rate") @db.Decimal(5, 2)
+  taxAmount   Decimal @map("tax_amount") @db.Decimal(12, 2)
+  lineTotal   Decimal @map("line_total") @db.Decimal(12, 2)
+  sortOrder   Int     @default(0) @map("sort_order")
+
+  invoice           Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  ledgerSuggestions LedgerSuggestion[]
+
+  @@map("invoice_items")
+}
+
+model ValidationResult {
+  id        String             @id @default(uuid())
+  invoiceId String             @map("invoice_id")
+  ruleName  String             @map("rule_name")
+  status    ValidationStatus
+  message   String
+  severity  ValidationSeverity
+  details   Json?
+  createdAt DateTime           @default(now()) @map("created_at")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("validation_results")
+}
+
+model LedgerSuggestion {
+  id              String  @id @default(uuid())
+  invoiceId       String  @map("invoice_id")
+  itemId          String? @map("item_id")
+  suggestedLedger String  @map("suggested_ledger")
+  confidenceScore Float   @map("confidence_score")
+  sourceReason    String? @map("source_reason")
+  approvedLedger  String? @map("approved_ledger")
+  approvedById    String? @map("approved_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  invoice    Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  item       InvoiceItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  approvedBy User?        @relation("ApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@map("ledger_suggestions")
+}
+
+model Voucher {
+  id            String        @id @default(uuid())
+  invoiceId     String        @map("invoice_id")
+  voucherNumber String        @unique @map("voucher_number")
+  voucherType   VoucherType   @map("voucher_type")
+  voucherDate   DateTime      @map("voucher_date") @db.Date
+  status        VoucherStatus @default(DRAFT)
+  totalAmount   Decimal       @map("total_amount") @db.Decimal(12, 2)
+  narration     String?
+  createdById   String        @map("created_by")
+  approvedById  String?       @map("approved_by")
+  approvedAt    DateTime?     @map("approved_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  invoice    Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  createdBy  User          @relation("CreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy User?         @relation("ApprovedVoucherBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  lines      VoucherLine[]
+  xmlExports XmlExport[]
+
+  @@index([invoiceId, status])
+  @@map("vouchers")
+}
+
+model VoucherLine {
+  id         String    @id @default(uuid())
+  voucherId  String    @map("voucher_id")
+  ledgerName String    @map("ledger_name")
+  entryType  EntryType @map("entry_type")
+  amount     Decimal   @db.Decimal(12, 2)
+  taxType    String?   @map("tax_type")
+  narration  String?
+  sortOrder  Int       @default(0) @map("sort_order")
+
+  voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+
+  @@map("voucher_lines")
+}
+
+model XmlExport {
+  id            String       @id @default(uuid())
+  invoiceId     String       @map("invoice_id")
+  voucherId     String       @map("voucher_id")
+  fileUrl       String?      @map("file_url")
+  exportStatus  ExportStatus @default(PENDING) @map("export_status")
+  errorMessage  String?      @map("error_message")
+  attemptNumber Int          @default(1) @map("attempt_number")
+  exportedById  String       @map("exported_by")
+  generatedAt   DateTime     @default(now()) @map("generated_at")
+
+  invoice    Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  voucher    Voucher @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+  exportedBy User    @relation(fields: [exportedById], references: [id], onDelete: Restrict)
+
+  @@index([voucherId, exportStatus])
+  @@map("xml_exports")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String   @map("actor_user_id")
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  action      String
+  beforeValue Json?    @map("before_value")
+  afterValue  Json?    @map("after_value")
+  ipAddress   String?  @map("ip_address")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  actor User @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt])
+  @@map("audit_logs")
+}
